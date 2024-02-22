@@ -74,6 +74,7 @@ pub struct PoolOptions<DB: Database> {
         >,
     >,
     pub(crate) max_connections: u32,
+    pub(crate) acquire_slow_after: Duration,
     pub(crate) acquire_timeout: Duration,
     pub(crate) min_connections: u32,
     pub(crate) max_lifetime: Option<Duration>,
@@ -94,6 +95,7 @@ impl<DB: Database> Clone for PoolOptions<DB> {
             before_acquire: self.before_acquire.clone(),
             after_release: self.after_release.clone(),
             max_connections: self.max_connections,
+            acquire_slow_after: self.acquire_slow_after,
             acquire_timeout: self.acquire_timeout,
             min_connections: self.min_connections,
             max_lifetime: self.max_lifetime,
@@ -143,6 +145,8 @@ impl<DB: Database> PoolOptions<DB> {
             // A production application will want to set a higher limit than this.
             max_connections: 10,
             min_connections: 0,
+            // Fast enough to catch problems (e.g. a full pool); slow enough to not flag typical time to add a new connection to a pool
+            acquire_slow_after: Duration::from_secs(3),
             acquire_timeout: Duration::from_secs(30),
             idle_timeout: Some(Duration::from_secs(10 * 60)),
             max_lifetime: Some(Duration::from_secs(30 * 60)),
@@ -196,6 +200,21 @@ impl<DB: Database> PoolOptions<DB> {
     /// Get the minimum number of connections to maintain at all times.
     pub fn get_min_connections(&self) -> u32 {
         self.min_connections
+    }
+
+    /// Set a threshold for reporting excessive time taken to acquire a connection from
+    /// the connection pool. When the threshold is exceeded, a warning is logged.
+    ///
+    /// Defaults to a value that should not typically be exceeded by the pool enlarging
+    /// itself with an additional new connection.
+    pub fn acquire_slow_after(mut self, value: Duration) -> Self {
+        self.acquire_slow_after = value;
+        self
+    }
+
+    /// Get the threshold for reporting excessive time taken to acquire a connection.
+    pub fn get_acquire_slow_after(&self) -> Duration {
+        self.acquire_slow_after
     }
 
     /// Set the maximum amount of time to spend waiting for a connection in [`Pool::acquire()`].
@@ -269,7 +288,7 @@ impl<DB: Database> PoolOptions<DB> {
         self
     }
 
-    /// Get's whether `test_before_acquire` is currently set.
+    /// Get whether `test_before_acquire` is currently set.
     pub fn get_test_before_acquire(&self) -> bool {
         self.test_before_acquire
     }

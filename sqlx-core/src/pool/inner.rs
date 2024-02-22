@@ -241,9 +241,10 @@ impl<DB: Database> PoolInner<DB> {
             return Err(Error::PoolClosed);
         }
 
-        let deadline = Instant::now() + self.options.acquire_timeout;
+        let acquire_started_at = Instant::now();
+        let deadline = acquire_started_at + self.options.acquire_timeout;
 
-        crate::rt::timeout(
+        let acquired = crate::rt::timeout(
             self.options.acquire_timeout,
             async {
                 loop {
@@ -272,7 +273,7 @@ impl<DB: Database> PoolInner<DB> {
                             // or if the pool was closed between `acquire_permit()` and
                             // `try_increment_size()`.
                             tracing::debug!("woke but was unable to acquire idle connection or open new one; retrying");
-                            // If so, we're likely in the current-thread runtime if it's Tokio
+                            // If so, we're likely in the current-thread runtime if it's Tokio,
                             // and so we should yield to let any spawned return_to_pool() tasks
                             // execute.
                             crate::rt::yield_now().await;
@@ -286,7 +287,21 @@ impl<DB: Database> PoolInner<DB> {
             }
         )
             .await
-            .map_err(|_| Error::PoolTimedOut)?
+            .map_err(|_| Error::PoolTimedOut)??;
+
+        let acquired_at = Instant::now();
+        let acquired_after = acquired_at - acquire_started_at;
+
+        if acquired_after >= self.options.acquire_slow_after {
+            tracing::warn!(
+                target: "sqlx::pool",
+                aquired_after_secs = acquired_after.as_secs_f64(),
+                slow_acquire_threshold_secs = self.options.acquire_slow_after.as_secs_f64(),
+                "slow connection acquire: time exceeded alert threshold"
+            )
+        }
+
+        Ok(acquired)
     }
 
     pub(super) async fn connect(

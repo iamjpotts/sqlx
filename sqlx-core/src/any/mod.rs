@@ -30,7 +30,6 @@ pub use column::AnyColumn;
 pub use connection::AnyConnection;
 // Used internally in `sqlx-macros`
 
-use crate::encode::Encode;
 pub use connection::AnyConnectionBackend;
 pub use database::Any;
 #[allow(deprecated)]
@@ -43,7 +42,6 @@ pub use transaction::AnyTransactionManager;
 pub use type_info::{AnyTypeInfo, AnyTypeInfoKind};
 pub use value::{AnyValue, AnyValueRef};
 
-use crate::types::Type;
 #[doc(hidden)]
 pub use value::AnyValueKind;
 
@@ -63,21 +61,3 @@ impl_acquire!(Any, AnyConnection);
 impl_column_index_for_row!(AnyRow);
 impl_column_index_for_statement!(AnyStatement);
 // impl_into_maybe_pool!(Any, AnyConnection);
-
-// required because some databases have a different handling of NULL
-impl<'q, T> Encode<'q, Any> for Option<T>
-where
-    T: Encode<'q, Any> + 'q + Type<Any>,
-{
-    fn encode_by_ref(
-        &self,
-        buf: &mut AnyArgumentBuffer,
-    ) -> Result<crate::encode::IsNull, crate::error::BoxDynError> {
-        if let Some(value) = self {
-            value.encode_by_ref(buf)
-        } else {
-            buf.0.push(AnyValueKind::Null(T::type_info().kind));
-            Ok(crate::encode::IsNull::Yes)
-        }
-    }
-}

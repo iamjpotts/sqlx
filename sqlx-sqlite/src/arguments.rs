@@ -7,7 +7,10 @@ use libsqlite3_sys::SQLITE_OK;
 use std::sync::Arc;
 
 pub(crate) use sqlx_core::arguments::*;
+use sqlx_core::encode_owned::IntoEncode;
 use sqlx_core::error::BoxDynError;
+use sqlx_core::types::Type;
+use std::collections::BTreeMap;
 
 #[derive(Debug, Clone)]
 pub enum SqliteArgumentValue {
@@ -23,6 +26,7 @@ pub enum SqliteArgumentValue {
 #[derive(Default, Debug, Clone)]
 pub struct SqliteArguments {
     pub(crate) values: SqliteArgumentsBuffer,
+    pub(crate) named: BTreeMap<String, SqliteArgumentValue>,
 }
 
 #[derive(Default, Debug, Clone)]
@@ -47,6 +51,24 @@ impl SqliteArguments {
 
         Ok(())
     }
+
+    pub(crate) fn add_named<'t, T>(&mut self, name: &str, value: T) -> Result<(), BoxDynError>
+    where
+        T: Encode<'t, Sqlite>,
+    {
+        let mut buffer = SqliteArgumentsBuffer::default();
+
+        match value.encode(&mut buffer)? {
+            IsNull::Yes => buffer.push(SqliteArgumentValue::Null),
+            IsNull::No => {}
+        };
+
+        let encoded = buffer.0.into_iter().next().ok_or("no value was encoded")?;
+
+        self.named.insert(name.into(), encoded);
+
+        Ok(())
+    }
 }
 
 impl Arguments for SqliteArguments {
@@ -58,9 +80,16 @@ impl Arguments for SqliteArguments {
 
     fn add<'t, T>(&mut self, value: T) -> Result<(), BoxDynError>
     where
-        T: Encode<'t, Self::Database>,
+        T: IntoEncode<Self::Database> + Type<Self::Database>,
     {
-        self.add(value)
+        self.add(value.into_encode())
+    }
+
+    fn add_named<T>(&mut self, name: &str, value: T) -> Result<(), BoxDynError>
+    where
+        T: IntoEncode<Self::Database> + Type<Self::Database>,
+    {
+        self.add_named(name, value.into_encode())
     }
 
     fn len(&self) -> usize {

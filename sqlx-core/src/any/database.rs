@@ -3,6 +3,7 @@ use crate::any::{
     AnyStatement, AnyTransactionManager, AnyTypeInfo, AnyValue, AnyValueRef,
 };
 use crate::database::{Database, HasStatementCache};
+use crate::placeholders::ParamIndexing;
 
 /// Opaque database driver. Capable of being used in place of any SQLx database driver. The actual
 /// driver used will be selected at runtime, from the connection url.
@@ -31,6 +32,11 @@ impl Database for Any {
     type Statement = AnyStatement;
 
     const NAME: &'static str = "Any";
+
+    // Should this be constant for `Any` or should it be configurable
+    // at runtime to be aligned with the database driver?
+    const PLACEHOLDER_CHAR: char = 'X';
+    const PARAM_INDEXING: ParamIndexing = ParamIndexing::Implicit;
 
     const URL_SCHEMES: &'static [&'static str] = &[];
 }

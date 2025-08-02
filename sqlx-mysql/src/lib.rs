@@ -68,6 +68,3 @@ impl_into_arguments_for_arguments!(MySqlArguments);
 impl_acquire!(MySql, MySqlConnection);
 impl_column_index_for_row!(MySqlRow);
 impl_column_index_for_statement!(MySqlStatement);
-
-// required because some databases have a different handling of NULL
-impl_encode_for_option!(MySql);

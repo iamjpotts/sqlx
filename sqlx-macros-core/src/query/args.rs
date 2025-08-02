@@ -10,7 +10,7 @@ use sqlx_core::type_info::TypeInfo;
 use syn::spanned::Spanned;
 use syn::{Expr, ExprCast, ExprGroup, Type};
 
-/// Returns a tokenstream which typechecks the arguments passed to the macro
+/// Returns a token stream which typechecks the arguments passed to the macro
 /// and binds them to `DB::Arguments` with the ident `query_args`.
 pub fn quote_args<DB: DatabaseExt>(
     input: &QueryMacroInput,

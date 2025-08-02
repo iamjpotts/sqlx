@@ -2,18 +2,61 @@ use crate::encode::{Encode, IsNull};
 use crate::types::Type;
 use crate::{MySql, MySqlTypeInfo};
 pub(crate) use sqlx_core::arguments::*;
+use sqlx_core::encode_owned::{EncodeOwned, IntoEncode};
 use sqlx_core::error::BoxDynError;
+use sqlx_core::placeholders::{ArgumentKind, Placeholder};
+use std::collections::BTreeMap;
 use std::ops::Deref;
+use std::sync::Arc;
 
 /// Implementation of [`Arguments`] for MySQL.
 #[derive(Debug, Default, Clone)]
 pub struct MySqlArguments {
+    positional: Vec<Arc<dyn EncodeOwned<MySql>>>,
+    named: BTreeMap<String, Arc<dyn EncodeOwned<MySql>>>,
+}
+
+impl MySqlArguments {
+    #[allow(clippy::borrowed_box)]
+    pub(crate) fn get(&self, index: &ArgumentIndex<'_>) -> Option<&dyn EncodeOwned<MySql>> {
+        let arc_opt = match index {
+            ArgumentIndex::Positioned(i) => self.positional.get(*i),
+            ArgumentIndex::Named(n) => self.named.get(n.as_ref()),
+        };
+
+        arc_opt.map(|x| x.as_ref())
+    }
+
+    pub(crate) fn get_kind(
+        &self,
+        index: &ArgumentIndex<'_>,
+        place: &Placeholder<'_>,
+        has_expansion: &mut bool,
+    ) -> Result<ArgumentKind, String> {
+        let arg = self.get(index).ok_or("unknown argument")?;
+
+        let kind = if place.kleene.is_some() {
+            let len = arg.vector_len().ok_or("expected vector for argument")?;
+
+            *has_expansion = true;
+
+            ArgumentKind::Vector(len)
+        } else {
+            ArgumentKind::Scalar
+        };
+
+        Ok(kind)
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct MySqlArgumentsPositional {
     pub(crate) values: Vec<u8>,
     pub(crate) types: Vec<MySqlTypeInfo>,
     pub(crate) null_bitmap: NullBitMap,
 }
 
-impl MySqlArguments {
+impl MySqlArgumentsPositional {
     pub(crate) fn add<'q, T>(&mut self, value: T) -> Result<(), BoxDynError>
     where
         T: Encode<'q, MySql> + Type<MySql>,
@@ -38,6 +81,38 @@ impl MySqlArguments {
 }
 
 impl Arguments for MySqlArguments {
+    type Database = MySql;
+
+    fn reserve(&mut self, len: usize, _size: usize) {
+        self.positional.reserve(len);
+    }
+
+    fn add<T>(&mut self, value: T) -> Result<(), BoxDynError>
+    where
+        T: IntoEncode<Self::Database> + Type<Self::Database>,
+    {
+        self.positional.push(Arc::new(value.into_encode_owned()));
+
+        Ok(())
+    }
+
+    fn add_named<T>(&mut self, name: &str, value: T) -> Result<(), BoxDynError>
+    where
+        T: IntoEncode<Self::Database> + Type<Self::Database>,
+    {
+        self.named
+            .insert(name.to_owned(), Arc::new(value.into_encode_owned()));
+
+        Ok(())
+    }
+
+    #[inline(always)]
+    fn len(&self) -> usize {
+        self.positional.len()
+    }
+}
+
+impl<'q> PositionalArguments<'q> for MySqlArgumentsPositional {
     type Database = MySql;
 
     fn reserve(&mut self, len: usize, size: usize) {

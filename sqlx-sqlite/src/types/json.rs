@@ -1,11 +1,10 @@
-use serde::{Deserialize, Serialize};
-
 use crate::arguments::SqliteArgumentsBuffer;
 use crate::decode::Decode;
 use crate::encode::{Encode, IsNull};
 use crate::error::BoxDynError;
 use crate::types::{Json, Type};
 use crate::{type_info::DataType, Sqlite, SqliteTypeInfo, SqliteValueRef};
+use serde::{Deserialize, Serialize};
 
 impl<T> Type<Sqlite> for Json<T> {
     fn type_info() -> SqliteTypeInfo {

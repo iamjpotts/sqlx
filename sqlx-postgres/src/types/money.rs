@@ -172,6 +172,9 @@ impl Encode<'_, Postgres> for PgMoney {
     }
 }
 
+impl_into_encode_for_db!(Postgres, PgMoney);
+//impl_into_encode_for_db!(Postgres, Vec<PgMoney>);
+
 impl Decode<'_, Postgres> for PgMoney {
     fn decode(value: PgValueRef<'_>) -> Result<Self, BoxDynError> {
         match value.format() {

@@ -14,8 +14,8 @@ use crate::protocol::text::{ColumnDefinition, ColumnFlags, Query, TextRow};
 use crate::statement::{MySqlStatement, MySqlStatementMetadata};
 use crate::HashMap;
 use crate::{
-    MySql, MySqlArguments, MySqlColumn, MySqlConnection, MySqlQueryResult, MySqlRow, MySqlTypeInfo,
-    MySqlValueFormat,
+    arguments::MySqlArgumentsPositional, MySql, MySqlColumn, MySqlConnection, MySqlQueryResult,
+    MySqlRow, MySqlTypeInfo, MySqlValueFormat,
 };
 use either::Either;
 use futures_core::future::BoxFuture;
@@ -23,7 +23,8 @@ use futures_core::stream::BoxStream;
 use futures_core::Stream;
 use futures_util::TryStreamExt;
 use sqlx_core::column::{ColumnOrigin, TableColumn};
-use sqlx_core::sql_str::SqlStr;
+use sqlx_core::placeholders::parse_query;
+use sqlx_core::sql_str::{AssertSqlSafe, SqlSafeStr, SqlStr};
 use std::{pin::pin, sync::Arc};
 
 impl MySqlConnection {
@@ -104,7 +105,7 @@ impl MySqlConnection {
     pub(crate) async fn run<'e, 'c: 'e, 'q: 'e>(
         &'c mut self,
         sql: SqlStr,
-        arguments: Option<MySqlArguments>,
+        arguments: Option<MySqlArgumentsPositional>,
         persistent: bool,
     ) -> Result<impl Stream<Item = Result<Either<MySqlQueryResult, MySqlRow>, Error>> + 'e, Error>
     {
@@ -292,11 +293,28 @@ impl<'c> Executor<'c> for &'c mut MySqlConnection {
     {
         let arguments = query.take_arguments().map_err(Error::Encode);
         let persistent = query.persistent();
+        let sql = query.sql();
 
         Box::pin(try_stream! {
-        let sql = query.sql();
             let arguments = arguments?;
-            let mut s = pin!(self.run(sql, arguments, persistent).await?);
+            let parsed = parse_query(sql.as_str())?;
+
+            let (sql, arguments_inner) = match &arguments {
+                None => (sql.as_str().to_string(), None),
+                Some(args) => {
+                    let mut _has_expansion = false;
+
+                    let (expanded_sql, expanded_args) = parsed.expand::<MySql, _, _, _>(|idx, place| {
+                        args.get_kind(idx, place, &mut _has_expansion)
+                    }, MySqlArgumentsPositional::default)?;
+
+                    (expanded_sql.to_string(), Some(expanded_args))
+                }
+            };
+
+            let sql = AssertSqlSafe(sql).into_sql_str();
+
+            let mut s = pin!(self.run(sql, arguments_inner, persistent).await?);
 
             while let Some(v) = s.try_next().await? {
                 r#yield!(v);

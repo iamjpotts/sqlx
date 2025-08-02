@@ -1,6 +1,7 @@
 use futures_util::TryStreamExt;
 use sqlx::postgres::types::PgRange;
 use sqlx::{Connection, Executor, FromRow, Postgres};
+use sqlx_core::impl_into_encode_for_db;
 use sqlx_core::sql_str::AssertSqlSafe;
 use sqlx_postgres::PgHasArrayType;
 use sqlx_test::{new, test_type};
@@ -8,9 +9,11 @@ use std::fmt::Debug;
 use std::ops::Bound;
 
 // Transparent types are rust-side wrappers over DB types
-#[derive(PartialEq, Debug, sqlx::Type)]
+#[derive(PartialEq, Clone, Debug, sqlx::Type)]
 #[sqlx(transparent)]
 struct Transparent(i32);
+
+impl_into_encode_for_db!(Postgres, Transparent);
 
 #[derive(PartialEq, Debug, sqlx::Type)]
 // https://github.com/launchbadge/sqlx/issues/2611
@@ -18,6 +21,8 @@ struct Transparent(i32);
 // impossible-to-satisfy `where` bound. This attribute allows the user to opt-out.
 #[sqlx(transparent, no_pg_array)]
 struct TransparentArray(Vec<i64>);
+
+impl_into_encode_for_db!(Postgres, TransparentArray);
 
 #[sqlx_macros::test]
 async fn test_transparent_slice_to_array() -> anyhow::Result<()> {
@@ -42,8 +47,10 @@ enum Weak {
     Three = 4,
 }
 
+impl_into_encode_for_db!(Postgres, Weak);
+
 // "Strong" enums can map to TEXT (25)
-#[derive(PartialEq, Debug, sqlx::Type)]
+#[derive(PartialEq, Clone, Debug, sqlx::Type)]
 #[sqlx(type_name = "text")]
 #[sqlx(rename_all = "lowercase")]
 enum Strong {
@@ -53,6 +60,8 @@ enum Strong {
     #[sqlx(rename = "four")]
     Three,
 }
+
+impl_into_encode_for_db!(Postgres, Strong);
 
 // rename_all variants
 #[derive(PartialEq, Debug, sqlx::Type)]
@@ -64,6 +73,8 @@ enum ColorLower {
     Blue,
 }
 
+impl_into_encode_for_db!(Postgres, ColorLower);
+
 #[derive(PartialEq, Debug, sqlx::Type)]
 #[sqlx(type_name = "color_snake")]
 #[sqlx(rename_all = "snake_case")]
@@ -71,6 +82,8 @@ enum ColorSnake {
     RedGreen,
     BlueBlack,
 }
+
+impl_into_encode_for_db!(Postgres, ColorSnake);
 
 #[derive(PartialEq, Debug, sqlx::Type)]
 #[sqlx(type_name = "color_upper")]
@@ -81,6 +94,8 @@ enum ColorUpper {
     Blue,
 }
 
+impl_into_encode_for_db!(Postgres, ColorUpper);
+
 #[derive(PartialEq, Debug, sqlx::Type)]
 #[sqlx(type_name = "color_screaming_snake")]
 #[sqlx(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -88,6 +103,8 @@ enum ColorScreamingSnake {
     RedGreen,
     BlueBlack,
 }
+
+impl_into_encode_for_db!(Postgres, ColorScreamingSnake);
 
 #[derive(PartialEq, Debug, sqlx::Type)]
 #[sqlx(type_name = "color_kebab_case")]
@@ -97,6 +114,8 @@ enum ColorKebabCase {
     BlueBlack,
 }
 
+impl_into_encode_for_db!(Postgres, ColorKebabCase);
+
 #[derive(PartialEq, Debug, sqlx::Type)]
 #[sqlx(type_name = "color_mixed_case")]
 #[sqlx(rename_all = "camelCase")]
@@ -105,6 +124,8 @@ enum ColorCamelCase {
     BlueBlack,
 }
 
+impl_into_encode_for_db!(Postgres, ColorCamelCase);
+
 #[derive(PartialEq, Debug, sqlx::Type)]
 #[sqlx(type_name = "color_camel_case")]
 #[sqlx(rename_all = "PascalCase")]
@@ -112,6 +133,8 @@ enum ColorPascalCase {
     RedGreen,
     BlueBlack,
 }
+
+impl_into_encode_for_db!(Postgres, ColorPascalCase);
 
 // "Strong" enum can map to a custom type
 #[derive(PartialEq, Debug, sqlx::Type)]
@@ -123,9 +146,11 @@ enum Mood {
     Sad,
 }
 
+impl_into_encode_for_db!(Postgres, Mood);
+
 // Records must map to a custom type
 // Note that all types are types in Postgres
-#[derive(PartialEq, Debug, sqlx::Type)]
+#[derive(PartialEq, Clone, Debug, sqlx::Type)]
 #[sqlx(type_name = "inventory_item")]
 struct InventoryItem {
     name: String,
@@ -137,6 +162,8 @@ struct InventoryItem {
 #[derive(sqlx::Type, Debug, PartialEq)]
 #[sqlx(type_name = "float_range")]
 struct FloatRange(PgRange<f64>);
+
+impl_into_encode_for_db!(Postgres, FloatRange);
 
 // Custom domain type
 #[derive(sqlx::Type, Debug)]
@@ -277,7 +304,7 @@ SELECT id, mood FROM people WHERE id = $1
     SELECT $1 = 'happy'::mood, $1
             ",
     )
-    .bind(&Mood::Happy)
+    .bind(Mood::Happy)
     .fetch_one(&mut conn)
     .await?;
 
@@ -289,7 +316,7 @@ SELECT id, mood FROM people WHERE id = $1
     SELECT $1 = 'green'::color_lower, $1
             ",
     )
-    .bind(&ColorLower::Green)
+    .bind(ColorLower::Green)
     .fetch_one(&mut conn)
     .await?;
 
@@ -301,7 +328,7 @@ SELECT id, mood FROM people WHERE id = $1
     SELECT $1 = 'red_green'::color_snake, $1
             ",
     )
-    .bind(&ColorSnake::RedGreen)
+    .bind(ColorSnake::RedGreen)
     .fetch_one(&mut conn)
     .await?;
 
@@ -313,7 +340,7 @@ SELECT id, mood FROM people WHERE id = $1
     SELECT $1 = 'RED'::color_upper, $1
             ",
     )
-    .bind(&ColorUpper::Red)
+    .bind(ColorUpper::Red)
     .fetch_one(&mut conn)
     .await?;
 
@@ -325,7 +352,7 @@ SELECT id, mood FROM people WHERE id = $1
     SELECT $1 = 'RED_GREEN'::color_screaming_snake, $1
             ",
     )
-    .bind(&ColorScreamingSnake::RedGreen)
+    .bind(ColorScreamingSnake::RedGreen)
     .fetch_one(&mut conn)
     .await?;
 
@@ -337,7 +364,7 @@ SELECT id, mood FROM people WHERE id = $1
     SELECT $1 = 'red-green'::color_kebab_case, $1
             ",
     )
-    .bind(&ColorKebabCase::RedGreen)
+    .bind(ColorKebabCase::RedGreen)
     .fetch_one(&mut conn)
     .await?;
 
@@ -349,7 +376,7 @@ SELECT id, mood FROM people WHERE id = $1
     SELECT $1 = 'redGreen'::color_mixed_case, $1
             ",
     )
-    .bind(&ColorCamelCase::RedGreen)
+    .bind(ColorCamelCase::RedGreen)
     .fetch_one(&mut conn)
     .await?;
 
@@ -361,7 +388,7 @@ SELECT id, mood FROM people WHERE id = $1
     SELECT $1 = 'RedGreen'::color_camel_case, $1
             ",
     )
-    .bind(&ColorPascalCase::RedGreen)
+    .bind(ColorPascalCase::RedGreen)
     .fetch_one(&mut conn)
     .await?;
 
@@ -745,6 +772,8 @@ async fn test_enum_with_schema() -> anyhow::Result<()> {
         Baz,
     }
 
+    impl_into_encode_for_db!(Postgres, Foo);
+
     let mut conn = new::<Postgres>().await?;
 
     let foo: Foo = sqlx::query_scalar("SELECT $1::foo.\"Foo\"")
@@ -797,7 +826,7 @@ async fn test_from_row_hygiene() -> anyhow::Result<()> {
 
 #[sqlx_macros::test]
 async fn test_custom_pg_array() -> anyhow::Result<()> {
-    #[derive(sqlx::Type)]
+    #[derive(Debug, sqlx::Type)]
     #[sqlx(no_pg_array)]
     pub struct User {
         pub id: i32,
@@ -871,7 +900,7 @@ INSERT INTO responses (response)
 VALUES ($1)
         ",
     )
-    .bind(&value)
+    .bind(value)
     .execute(&mut conn)
     .await?;
 

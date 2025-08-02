@@ -63,6 +63,8 @@ pub mod statement;
 pub mod common;
 pub mod database;
 pub mod describe;
+#[macro_use]
+pub mod encode_owned;
 pub mod executor;
 pub mod from_row;
 pub mod fs;
@@ -92,7 +94,9 @@ pub mod any;
 #[cfg(feature = "migrate")]
 pub mod testing;
 
+mod choice;
 pub mod config;
+pub mod placeholders;
 
 pub use error::{Error, Result};
 

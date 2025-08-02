@@ -152,9 +152,6 @@ impl_column_index_for_row!(SqliteRow);
 impl_column_index_for_statement!(SqliteStatement);
 impl_acquire!(Sqlite, SqliteConnection);
 
-// required because some databases have a different handling of NULL
-impl_encode_for_option!(Sqlite);
-
 /// UNSTABLE: for use by `sqlx-cli` only.
 #[doc(hidden)]
 pub static CREATE_DB_WAL: AtomicBool = AtomicBool::new(true);

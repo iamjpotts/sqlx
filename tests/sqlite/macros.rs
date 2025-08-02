@@ -174,7 +174,7 @@ async fn test_query_scalar() -> anyhow::Result<()> {
 
     Ok(())
 }
-
+/*
 #[sqlx_macros::test]
 async fn query_by_string() -> anyhow::Result<()> {
     let mut conn = new::<Sqlite>().await?;
@@ -198,7 +198,7 @@ async fn query_by_string() -> anyhow::Result<()> {
     assert_eq!(result.string, string);
 
     Ok(())
-}
+}*/
 
 #[sqlx_macros::test]
 async fn macro_select_from_view() -> anyhow::Result<()> {

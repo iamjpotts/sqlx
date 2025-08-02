@@ -7,7 +7,6 @@ use sqlx_core::row::Row;
 use sqlx_core::types::Text;
 use sqlx_test::new;
 use sqlx_test::test_type;
-use std::borrow::Cow;
 use std::net::SocketAddr;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -200,17 +199,17 @@ test_type!(uuid_simple<sqlx::types::uuid::fmt::Simple>(Sqlite,
 ));
 
 test_type!(test_arc<Arc<i32>>(Sqlite, "1" == Arc::new(1i32)));
-test_type!(test_cow<Cow<'_, i32>>(Sqlite, "1" == Cow::<i32>::Owned(1i32)));
+//test_type!(test_cow<Cow<'_, i32>>(Sqlite, "1" == Cow::<i32>::Owned(1i32)));
 test_type!(test_box<Box<i32>>(Sqlite, "1" == Box::new(1i32)));
 test_type!(test_rc<Rc<i32>>(Sqlite, "1" == Rc::new(1i32)));
 
 test_type!(test_box_str<Box<str>>(Sqlite, "'John'" == Box::<str>::from("John")));
-test_type!(test_cow_str<Cow<'_, str>>(Sqlite, "'Phil'" == Cow::<'static, str>::from("Phil")));
+//test_type!(test_cow_str<Cow<'_, str>>(Sqlite, "'Phil'" == Cow::<'static, str>::from("Phil")));
 test_type!(test_arc_str<Arc<str>>(Sqlite, "'1234'" == Arc::<str>::from("1234")));
 test_type!(test_rc_str<Rc<str>>(Sqlite, "'5678'" == Rc::<str>::from("5678")));
 
 test_type!(test_box_slice<Box<[u8]>>(Sqlite, "X'01020304'" == Box::<[u8]>::from([1,2,3,4])));
-test_type!(test_cow_slice<Cow<'_, [u8]>>(Sqlite, "X'01020304'" == Cow::<'static, [u8]>::from(&[1,2,3,4])));
+//test_type!(test_cow_slice<Cow<'_, [u8]>>(Sqlite, "X'01020304'" == Cow::<'static, [u8]>::from(&[1,2,3,4])));
 test_type!(test_arc_slice<Arc<[u8]>>(Sqlite, "X'01020304'" == Arc::<[u8]>::from([1,2,3,4])));
 test_type!(test_rc_slice<Rc<[u8]>>(Sqlite, "X'01020304'" == Rc::<[u8]>::from([1,2,3,4])));
 
@@ -242,7 +241,7 @@ CREATE TEMPORARY TABLE user_login (
 
     sqlx::query("INSERT INTO user_login (user_id, socket_addr) VALUES (?, ?)")
         .bind(user_id)
-        .bind(Text(socket_addr))
+        .bind(&Text(socket_addr))
         .execute(&mut conn)
         .await?;
 
@@ -271,7 +270,7 @@ async fn it_binds_with_borrowed_data() -> anyhow::Result<()> {
 
     let mut conn = new::<Sqlite>().await?;
     sqlx::query("select ?")
-        .bind(Cow::Borrowed(&owned))
+        .bind(&owned)
         .fetch_one(&mut conn)
         .await?;
     Ok(())

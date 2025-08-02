@@ -1,4 +1,9 @@
+use crate::database::Database;
+use crate::encode::Encode;
+use crate::encode_owned::{EncodeClone, EncodeOwned, IntoEncode};
+use std::fmt::Display;
 use std::ops::{Deref, DerefMut};
+use crate::types::Type;
 
 /// Map a SQL text value to/from a Rust type using [`Display`] and [`FromStr`].
 ///
@@ -132,3 +137,22 @@ where
     }
 }
 */
+
+impl<DB, T> IntoEncode<DB> for Text<T>
+where
+    DB: Database,
+    T: Display,
+    Self: for<'e> Encode<'e, DB>,
+    String: Encode<'static, DB> + Type<DB>,
+{
+    fn into_encode<'s>(self) -> impl Encode<'s, DB> + 's
+    where
+        Self: 's,
+    {
+        self
+    }
+
+    fn into_encode_owned(self) -> impl EncodeOwned<DB> + 'static {
+        EncodeClone::from(self.to_string())
+    }
+}

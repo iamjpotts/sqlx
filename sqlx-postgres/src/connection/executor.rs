@@ -9,15 +9,15 @@ use crate::message::{
 };
 use crate::statement::PgStatementMetadata;
 use crate::{
-    statement::PgStatement, PgArguments, PgConnection, PgQueryResult, PgRow, PgTypeInfo,
+    statement::PgStatement, PgArgumentsInner, PgConnection, PgQueryResult, PgRow, PgTypeInfo,
     PgValueFormat, Postgres,
 };
 use futures_core::future::BoxFuture;
 use futures_core::stream::BoxStream;
 use futures_core::Stream;
 use futures_util::TryStreamExt;
-use sqlx_core::arguments::Arguments;
-use sqlx_core::sql_str::SqlStr;
+use sqlx_core::placeholders::parse_query;
+use sqlx_core::sql_str::{AssertSqlSafe, SqlSafeStr, SqlStr};
 use sqlx_core::Either;
 use std::{pin::pin, sync::Arc};
 
@@ -211,7 +211,7 @@ impl PgConnection {
     pub(crate) async fn run<'e, 'c: 'e, 'q: 'e>(
         &'c mut self,
         query: SqlStr,
-        arguments: Option<PgArguments>,
+        arguments: Option<PgArgumentsInner>,
         persistent: bool,
         metadata_opt: Option<Arc<PgStatementMetadata>>,
     ) -> Result<impl Stream<Item = Result<Either<PgQueryResult, PgRow>, Error>> + 'e, Error> {
@@ -404,8 +404,6 @@ impl<'c> Executor<'c> for &'c mut PgConnection {
         'q: 'e,
         E: 'q,
     {
-        // False positive: https://github.com/rust-lang/rust-clippy/issues/12560
-        #[allow(clippy::map_clone)]
         let metadata = query.statement().map(|s| Arc::clone(&s.metadata));
         let arguments = query.take_arguments().map_err(Error::Encode);
         let persistent = query.persistent();
@@ -413,7 +411,24 @@ impl<'c> Executor<'c> for &'c mut PgConnection {
 
         Box::pin(try_stream! {
             let arguments = arguments?;
-            let mut s = pin!(self.run(sql, arguments, persistent, metadata).await?);
+            let parsed = parse_query(sql.as_str())?;
+
+            let (sql, arguments_inner) = match &arguments {
+                None => (sql.as_str().to_string(), None),
+                Some(args) => {
+                    let mut _has_expansion = false;
+
+                    let (expanded_sql, expanded_args) = parsed.expand::<Postgres, _, _, _>(|idx, place| {
+                        args.get_kind(idx, place, &mut _has_expansion)
+                    }, PgArgumentsInner::default)?;
+
+                    (expanded_sql.to_string(), Some(expanded_args))
+                }
+            };
+
+            let sql = AssertSqlSafe(sql).into_sql_str();
+
+            let mut s = pin!(self.run(sql, arguments_inner, persistent, metadata).await?);
 
             while let Some(v) = s.try_next().await? {
                 r#yield!(v);
@@ -430,16 +445,33 @@ impl<'c> Executor<'c> for &'c mut PgConnection {
         'q: 'e,
         E: 'q,
     {
-        // False positive: https://github.com/rust-lang/rust-clippy/issues/12560
-        #[allow(clippy::map_clone)]
         let metadata = query.statement().map(|s| Arc::clone(&s.metadata));
         let arguments = query.take_arguments().map_err(Error::Encode);
         let persistent = query.persistent();
+        let sql = query.sql();
 
         Box::pin(async move {
-            let sql = query.sql();
             let arguments = arguments?;
-            let mut s = pin!(self.run(sql, arguments, persistent, metadata).await?);
+
+            let parsed = parse_query(sql.as_str())?;
+
+            let (sql, arguments_inner) = match &arguments {
+                None => (sql.as_str().to_string(), None),
+                Some(args) => {
+                    let mut _has_expansion = false;
+
+                    let (expanded_sql, expanded_args) = parsed.expand::<Postgres, _, _, _>(
+                        |idx, place| args.get_kind(idx, place, &mut _has_expansion),
+                        PgArgumentsInner::default,
+                    )?;
+
+                    (expanded_sql.to_string(), Some(expanded_args))
+                }
+            };
+
+            let sql = AssertSqlSafe(sql).into_sql_str();
+
+            let mut s = pin!(self.run(sql, arguments_inner, persistent, metadata).await?);
 
             // With deferred constraints we need to check all responses as we
             // could get a OK response (with uncommitted data), only to get an

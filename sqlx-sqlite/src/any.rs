@@ -5,6 +5,7 @@ use crate::{
 use futures_core::future::BoxFuture;
 use futures_core::stream::BoxStream;
 use futures_util::{FutureExt, StreamExt, TryFutureExt, TryStreamExt};
+use std::ops::Deref;
 
 use sqlx_core::any::{
     Any, AnyArguments, AnyColumn, AnyConnectOptions, AnyConnectionBackend, AnyQueryResult, AnyRow,
@@ -233,6 +234,28 @@ fn map_arguments(args: AnyArguments) -> SqliteArguments {
 
     SqliteArguments {
         values: SqliteArgumentsBuffer::new(values),
+        named: args
+            .named_values
+            .into_iter()
+            .map(|(key, val)| {
+                (
+                    key,
+                    match val.deref() {
+                        AnyValueKind::Null(_) => SqliteArgumentValue::Null,
+                        AnyValueKind::Bool(b) => SqliteArgumentValue::Int(*b as i32),
+                        AnyValueKind::SmallInt(i) => SqliteArgumentValue::Int(*i as i32),
+                        AnyValueKind::Integer(i) => SqliteArgumentValue::Int(*i),
+                        AnyValueKind::BigInt(i) => SqliteArgumentValue::Int64(*i),
+                        AnyValueKind::Real(r) => SqliteArgumentValue::Double(*r as f64),
+                        AnyValueKind::Double(d) => SqliteArgumentValue::Double(*d),
+                        AnyValueKind::Text(t) => SqliteArgumentValue::Text(Arc::new(t.to_string())),
+                        AnyValueKind::Blob(b) => SqliteArgumentValue::Blob(Arc::new(b.to_vec())),
+                        // AnyValueKind is `#[non_exhaustive]` but we should have covered everything
+                        _ => unreachable!("BUG: missing mapping for {val:?}"),
+                    },
+                )
+            })
+            .collect(),
     }
 }
 

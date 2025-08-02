@@ -69,7 +69,7 @@ use crate::value::{Value, ValueRef};
 ///
 /// This trait encapsulates a complete set of traits that implement a driver for a
 /// specific database (e.g., MySQL, PostgreSQL).
-pub trait Database: 'static + Sized + Send + Debug {
+pub trait Database: 'static + Sized + Send + Sync + Debug {
     /// The concrete `Connection` implementation for this database.
     type Connection: Connection<Database = Self>;
 
@@ -105,6 +105,15 @@ pub trait Database: 'static + Sized + Send + Debug {
 
     /// The display name for this database driver.
     const NAME: &'static str;
+
+    /// The character used to prefix bind parameter placeholders, e.g. `$` for Postgres, `?` for MySQL, etc.
+    const PLACEHOLDER_CHAR: char;
+
+    /// The indexing type for bind parameters.
+    ///
+    /// E.g. `Implicit` for MySQL which just does `SELECT 1 FROM foo WHERE bar = ? AND baz = ?`
+    /// or `OneIndexed` for Postgres which does `SELECT 1 FROM foo WHERE bar = $1 AND baz = $2`
+    const PARAM_INDEXING: crate::placeholders::ParamIndexing;
 
     /// The schemes for database URLs that should match this driver.
     const URL_SCHEMES: &'static [&'static str];

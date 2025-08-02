@@ -6,6 +6,7 @@ use crate::{
 };
 
 pub(crate) use sqlx_core::database::{Database, HasStatementCache};
+use sqlx_core::placeholders;
 
 /// PostgreSQL database driver.
 #[derive(Debug)]
@@ -33,6 +34,9 @@ impl Database for Postgres {
     type Statement = PgStatement;
 
     const NAME: &'static str = "PostgreSQL";
+
+    const PLACEHOLDER_CHAR: char = '$';
+    const PARAM_INDEXING: placeholders::ParamIndexing = placeholders::ParamIndexing::OneIndexed;
 
     const URL_SCHEMES: &'static [&'static str] = &["postgres", "postgresql"];
 }

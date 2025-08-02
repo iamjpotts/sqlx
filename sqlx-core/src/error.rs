@@ -129,6 +129,10 @@ pub enum Error {
     #[doc(hidden)]
     #[error("error reading configuration file: {0}")]
     ConfigFile(#[from] crate::config::ConfigError),
+
+    /// An error occurred while parsing or expanding the generic placeholder syntax in a query.
+    #[error("failed to parse or expand placeholder(s): {0}")]
+    Placeholders(crate::placeholders::Error),
 }
 
 impl StdError for Box<dyn DatabaseError> {}

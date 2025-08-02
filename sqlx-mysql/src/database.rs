@@ -4,6 +4,7 @@ use crate::{
     MySqlTransactionManager, MySqlTypeInfo,
 };
 pub(crate) use sqlx_core::database::{Database, HasStatementCache};
+use sqlx_core::placeholders;
 
 /// MySQL database driver.
 #[derive(Debug)]
@@ -31,6 +32,9 @@ impl Database for MySql {
     type Statement = MySqlStatement;
 
     const NAME: &'static str = "MySQL";
+
+    const PLACEHOLDER_CHAR: char = '?';
+    const PARAM_INDEXING: placeholders::ParamIndexing = placeholders::ParamIndexing::Implicit;
 
     const URL_SCHEMES: &'static [&'static str] = &["mysql", "mariadb"];
 }

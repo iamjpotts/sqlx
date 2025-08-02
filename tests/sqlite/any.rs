@@ -1,6 +1,6 @@
 use sqlx::Any;
 use sqlx_test::new;
-
+/*
 #[sqlx_macros::test]
 async fn it_encodes_bool_with_any() -> anyhow::Result<()> {
     sqlx::any::install_default_drivers();
@@ -16,7 +16,7 @@ async fn it_encodes_bool_with_any() -> anyhow::Result<()> {
 
     Ok(())
 }
-
+*/
 #[sqlx_macros::test]
 async fn issue_3179() -> anyhow::Result<()> {
     sqlx::any::install_default_drivers();

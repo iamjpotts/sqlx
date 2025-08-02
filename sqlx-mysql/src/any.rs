@@ -1,12 +1,13 @@
+use crate::arguments::MySqlArgumentsPositional;
 use crate::protocol::text::ColumnType;
 use crate::{
-    MySql, MySqlColumn, MySqlConnectOptions, MySqlConnection, MySqlQueryResult, MySqlRow,
-    MySqlTransactionManager, MySqlTypeInfo,
+    MySql, MySqlArguments, MySqlColumn, MySqlConnectOptions, MySqlConnection, MySqlQueryResult,
+    MySqlRow, MySqlTransactionManager, MySqlTypeInfo,
 };
 use either::Either;
 use futures_core::future::BoxFuture;
 use futures_core::stream::BoxStream;
-use futures_util::{stream, FutureExt, StreamExt, TryFutureExt};
+use futures_util::{FutureExt, TryStreamExt};
 use sqlx_core::any::{
     Any, AnyArguments, AnyColumn, AnyConnectOptions, AnyConnectionBackend, AnyQueryResult, AnyRow,
     AnyStatement, AnyTypeInfo, AnyTypeInfoKind,
@@ -15,9 +16,10 @@ use sqlx_core::connection::Connection;
 use sqlx_core::database::Database;
 use sqlx_core::describe::Describe;
 use sqlx_core::executor::Executor;
-use sqlx_core::sql_str::SqlStr;
+use sqlx_core::placeholders::parse_query;
+use sqlx_core::sql_str::{AssertSqlSafe, SqlSafeStr, SqlStr};
 use sqlx_core::transaction::TransactionManager;
-use std::future;
+use std::pin::pin;
 
 sqlx_core::declare_driver_with_optional_migrate!(DRIVER = MySql);
 
@@ -84,23 +86,23 @@ impl AnyConnectionBackend for MySqlConnection {
         arguments: Option<AnyArguments>,
     ) -> BoxStream<'_, sqlx_core::Result<Either<AnyQueryResult, AnyRow>>> {
         let persistent = persistent && arguments.is_some();
-        let arguments = match arguments.map(AnyArguments::convert_into).transpose() {
-            Ok(arguments) => arguments,
-            Err(error) => {
-                return stream::once(future::ready(Err(sqlx_core::Error::Encode(error)))).boxed()
-            }
-        };
 
-        Box::pin(
-            self.run(query, arguments, persistent)
-                .try_flatten_stream()
-                .map(|res| {
-                    Ok(match res? {
-                        Either::Left(result) => Either::Left(map_result(result)),
-                        Either::Right(row) => Either::Right(AnyRow::try_from(&row)?),
-                    })
-                }),
-        )
+        Box::pin(try_stream! {
+            let (sql, arguments_inner) = sql_and_args(query, arguments)?;
+
+            let mut s = pin!(self.run(sql, arguments_inner, persistent).await?);
+
+            while let Some(v) = s.try_next().await? {
+                let v = match v {
+                    Either::Left(result) => Either::Left(map_result(result)),
+                    Either::Right(row) => Either::Right(AnyRow::try_from(&row)?),
+                };
+
+                r#yield!(v);
+            }
+
+            Ok(())
+        })
     }
 
     fn prepare_with<'c, 'q: 'c>(
@@ -121,6 +123,36 @@ impl AnyConnectionBackend for MySqlConnection {
             describe.try_into_any()
         })
     }
+}
+
+fn sql_and_args(
+    query: SqlStr,
+    arguments: Option<AnyArguments>,
+) -> sqlx_core::Result<(SqlStr, Option<MySqlArgumentsPositional>)> {
+    let arguments: Option<MySqlArguments> = arguments
+        .map(AnyArguments::convert_into)
+        .transpose()
+        .map_err(sqlx_core::Error::Encode)?;
+
+    let (expanded_sql, expanded_args) = match &arguments {
+        None => (query.as_str().to_string(), None),
+        Some(args) => {
+            let parsed = parse_query(query.as_str())?;
+
+            let mut _has_expansion = false;
+
+            let (sql, expanded_args) = parsed.expand::<MySql, _, _, _>(
+                |idx, place| args.get_kind(idx, place, &mut _has_expansion),
+                MySqlArgumentsPositional::default,
+            )?;
+
+            (sql.to_string(), Some(expanded_args))
+        }
+    };
+
+    let expanded_sql = AssertSqlSafe(expanded_sql).into_sql_str();
+
+    Ok((expanded_sql, expanded_args))
 }
 
 impl<'a> TryFrom<&'a MySqlTypeInfo> for AnyTypeInfo {

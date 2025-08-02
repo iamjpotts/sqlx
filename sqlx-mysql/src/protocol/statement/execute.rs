@@ -1,14 +1,14 @@
+use crate::arguments::MySqlArgumentsPositional;
 use crate::io::ProtocolEncode;
 use crate::protocol::text::ColumnFlags;
 use crate::protocol::Capabilities;
-use crate::MySqlArguments;
 
 // https://dev.mysql.com/doc/dev/mysql-server/8.0.12/page_protocol_com_stmt_execute.html
 
 #[derive(Debug)]
 pub struct Execute<'q> {
     pub statement: u32,
-    pub arguments: &'q MySqlArguments,
+    pub arguments: &'q MySqlArgumentsPositional,
 }
 
 impl ProtocolEncode<'_, Capabilities> for Execute<'_> {

@@ -2,14 +2,43 @@ use crate::any::value::AnyValueKind;
 use crate::any::{Any, AnyTypeInfoKind};
 use crate::arguments::Arguments;
 use crate::encode::{Encode, IsNull};
+use crate::encode_owned::IntoEncode;
 use crate::error::BoxDynError;
 use crate::types::Type;
+use std::collections::BTreeMap;
 use std::sync::Arc;
+
+fn encode_one<E>(value: E) -> Result<AnyValueKind, BoxDynError>
+where
+    E: IntoEncode<Any> + Type<Any>,
+{
+    let value = value.into_encode_owned();
+
+    let mut buffer = AnyArgumentBuffer(vec![]);
+
+    let _: IsNull = value.encode_by_ref(&mut buffer)?;
+
+    let length = buffer.0.len();
+    let mut it = buffer.0.into_iter();
+
+    // itertools which provides exactly_one is a transitive dev-dependency
+    match (it.next(), it.next()) {
+        (Some(one), None) => Ok(one),
+        _ => Err(format!(
+            "value should have encoded to exactly 1 buffered value but encoded to {} values",
+            length
+        )
+        .into()),
+    }
+}
 
 #[derive(Default)]
 pub struct AnyArguments {
     #[doc(hidden)]
     pub values: AnyArgumentBuffer,
+
+    #[doc(hidden)]
+    pub named_values: BTreeMap<String, Arc<AnyValueKind>>,
 }
 
 impl Arguments for AnyArguments {
@@ -21,9 +50,19 @@ impl Arguments for AnyArguments {
 
     fn add<'t, T>(&mut self, value: T) -> Result<(), BoxDynError>
     where
-        T: Encode<'t, Self::Database> + Type<Self::Database>,
+        T: IntoEncode<Self::Database> + Type<Self::Database>,
     {
-        let _: IsNull = value.encode(&mut self.values)?;
+        let _: IsNull = value.into_encode().encode(&mut self.values)?;
+        Ok(())
+    }
+
+    fn add_named<T>(&mut self, name: &str, value: T) -> Result<(), BoxDynError>
+    where
+        T: IntoEncode<Self::Database> + Type<Self::Database>,
+    {
+        self.named_values
+            .insert(name.into(), Arc::new(encode_one(value)?));
+
         Ok(())
     }
 
@@ -39,24 +78,26 @@ impl AnyArguments {
     #[doc(hidden)]
     pub fn convert_into<'a, A: Arguments>(self) -> Result<A, BoxDynError>
     where
-        Option<i32>: Type<A::Database> + Encode<'a, A::Database>,
-        Option<bool>: Type<A::Database> + Encode<'a, A::Database>,
-        Option<i16>: Type<A::Database> + Encode<'a, A::Database>,
-        Option<i32>: Type<A::Database> + Encode<'a, A::Database>,
-        Option<i64>: Type<A::Database> + Encode<'a, A::Database>,
-        Option<f32>: Type<A::Database> + Encode<'a, A::Database>,
-        Option<f64>: Type<A::Database> + Encode<'a, A::Database>,
-        Option<String>: Type<A::Database> + Encode<'a, A::Database>,
-        Option<Vec<u8>>: Type<A::Database> + Encode<'a, A::Database>,
-        bool: Type<A::Database> + Encode<'a, A::Database>,
-        i16: Type<A::Database> + Encode<'a, A::Database>,
-        i32: Type<A::Database> + Encode<'a, A::Database>,
-        i64: Type<A::Database> + Encode<'a, A::Database>,
-        f32: Type<A::Database> + Encode<'a, A::Database>,
-        f64: Type<A::Database> + Encode<'a, A::Database>,
-        Arc<String>: Type<A::Database> + Encode<'a, A::Database>,
-        Arc<str>: Type<A::Database> + Encode<'a, A::Database>,
-        Arc<Vec<u8>>: Type<A::Database> + Encode<'a, A::Database>,
+        Option<i32>: IntoEncode<A::Database> + Type<A::Database>,
+        Option<bool>: IntoEncode<A::Database> + Type<A::Database>,
+        Option<i16>: IntoEncode<A::Database> + Type<A::Database>,
+        Option<i32>: IntoEncode<A::Database> + Type<A::Database>,
+        Option<i64>: IntoEncode<A::Database> + Type<A::Database>,
+        Option<f32>: IntoEncode<A::Database> + Type<A::Database>,
+        Option<f64>: IntoEncode<A::Database> + Type<A::Database>,
+        Option<String>: IntoEncode<A::Database> + Type<A::Database>,
+        Option<Vec<u8>>: IntoEncode<A::Database> + Type<A::Database>,
+        bool: IntoEncode<A::Database> + Type<A::Database>,
+        i16: IntoEncode<A::Database> + Type<A::Database>,
+        i32: IntoEncode<A::Database> + Type<A::Database>,
+        i64: IntoEncode<A::Database> + Type<A::Database>,
+        f32: IntoEncode<A::Database> + Type<A::Database>,
+        f64: IntoEncode<A::Database> + Type<A::Database>,
+        String: IntoEncode<A::Database> + Type<A::Database>,
+        Vec<u8>: IntoEncode<A::Database> + Type<A::Database>,
+        Arc<String>: IntoEncode<A::Database> + Type<A::Database>,
+        Arc<str>: IntoEncode<A::Database> + Type<A::Database>,
+        Arc<Vec<u8>>: IntoEncode<A::Database> + Type<A::Database>,
     {
         let mut out = A::default();
 

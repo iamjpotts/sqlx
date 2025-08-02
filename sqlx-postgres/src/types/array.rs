@@ -7,7 +7,7 @@ use crate::encode::{Encode, IsNull};
 use crate::error::BoxDynError;
 use crate::types::Oid;
 use crate::types::Type;
-use crate::{PgArgumentBuffer, PgTypeInfo, PgValueFormat, PgValueRef, Postgres};
+use crate::{PgArgumentBuffer, PgBindIterExt, PgTypeInfo, PgValueFormat, PgValueRef, Postgres};
 
 /// Provides information necessary to encode and decode Postgres arrays as compatible Rust types.
 ///
@@ -162,7 +162,11 @@ where
                 self.len()
             )
         })?;
-        crate::PgBindIterExt::bind_iter(self.iter()).encode(buf)
+        //crate::PgBindIterExt::bind_iter(self.iter()).encode(buf)
+
+        let this = *self;
+
+        this.iter().bind_iter().encode(buf)
     }
 }
 

@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use crate::database::Database;
 use crate::error::BoxDynError;
+use crate::types::Type;
 
 /// The return type of [Encode::encode].
 #[must_use]
@@ -55,6 +56,18 @@ pub trait Encode<'q, DB: Database> {
     fn size_hint(&self) -> usize {
         mem::size_of_val(self)
     }
+
+    /// If this type is a vector, get its length.
+    fn vector_len(&self) -> Option<usize> {
+        None
+    }
+
+    /// If this type is a vector, add its elements as positional arguments to `arguments`.
+    ///
+    /// Panics if not a vector.
+    fn expand_vector<'a>(&'a self, _arguments: &mut DB::Arguments) {
+        panic!("not a vector!")
+    }
 }
 
 impl<'q, T, DB: Database> Encode<'q, DB> for &'_ T
@@ -85,52 +98,44 @@ where
     }
 }
 
-#[macro_export]
-macro_rules! impl_encode_for_option {
-    ($DB:ident) => {
-        impl<'q, T> $crate::encode::Encode<'q, $DB> for Option<T>
-        where
-            T: $crate::encode::Encode<'q, $DB> + $crate::types::Type<$DB> + 'q,
-        {
-            #[inline]
-            fn produces(&self) -> Option<<$DB as $crate::database::Database>::TypeInfo> {
-                if let Some(v) = self {
-                    v.produces()
-                } else {
-                    T::type_info().into()
-                }
-            }
-
-            #[inline]
-            fn encode(
-                self,
-                buf: &mut <$DB as $crate::database::Database>::ArgumentBuffer,
-            ) -> Result<$crate::encode::IsNull, $crate::error::BoxDynError> {
-                if let Some(v) = self {
-                    v.encode(buf)
-                } else {
-                    Ok($crate::encode::IsNull::Yes)
-                }
-            }
-
-            #[inline]
-            fn encode_by_ref(
-                &self,
-                buf: &mut <$DB as $crate::database::Database>::ArgumentBuffer,
-            ) -> Result<$crate::encode::IsNull, $crate::error::BoxDynError> {
-                if let Some(v) = self {
-                    v.encode_by_ref(buf)
-                } else {
-                    Ok($crate::encode::IsNull::Yes)
-                }
-            }
-
-            #[inline]
-            fn size_hint(&self) -> usize {
-                self.as_ref().map_or(0, $crate::encode::Encode::size_hint)
-            }
+impl<'q, T, DB: Database> Encode<'q, DB> for Option<T>
+where
+    T: Encode<'q, DB> + Type<DB> + 'q,
+{
+    #[inline]
+    fn produces(&self) -> Option<<DB as Database>::TypeInfo> {
+        if let Some(v) = self {
+            v.produces()
+        } else {
+            T::type_info().into()
         }
-    };
+    }
+
+    #[inline]
+    fn encode(self, buf: &mut <DB as Database>::ArgumentBuffer) -> Result<IsNull, BoxDynError> {
+        if let Some(v) = self {
+            v.encode(buf)
+        } else {
+            Ok(IsNull::Yes)
+        }
+    }
+
+    #[inline]
+    fn encode_by_ref(
+        &self,
+        buf: &mut <DB as Database>::ArgumentBuffer,
+    ) -> Result<IsNull, BoxDynError> {
+        if let Some(v) = self {
+            v.encode_by_ref(buf)
+        } else {
+            Ok(IsNull::Yes)
+        }
+    }
+
+    #[inline]
+    fn size_hint(&self) -> usize {
+        self.as_ref().map_or(0, Encode::size_hint)
+    }
 }
 
 macro_rules! impl_encode_for_smartpointer {
@@ -213,4 +218,13 @@ macro_rules! forward_encode_impl {
             }
         }
     };
+}
+
+impl<'q, DB: Database> Encode<'q, DB> for Box<dyn Encode<'q, DB>> {
+    fn encode_by_ref(
+        &self,
+        buf: &mut <DB as Database>::ArgumentBuffer,
+    ) -> Result<IsNull, BoxDynError> {
+        self.as_ref().encode_by_ref(buf)
+    }
 }

@@ -5,6 +5,7 @@ use crate::{
     SqliteArguments, SqliteColumn, SqliteConnection, SqliteQueryResult, SqliteRow, SqliteStatement,
     SqliteTransactionManager, SqliteTypeInfo, SqliteValue, SqliteValueRef,
 };
+use sqlx_core::placeholders;
 
 /// Sqlite database driver.
 #[derive(Debug)]
@@ -32,6 +33,9 @@ impl Database for Sqlite {
     type Statement = SqliteStatement;
 
     const NAME: &'static str = "SQLite";
+
+    const PLACEHOLDER_CHAR: char = '?';
+    const PARAM_INDEXING: placeholders::ParamIndexing = placeholders::ParamIndexing::Implicit;
 
     const URL_SCHEMES: &'static [&'static str] = &["sqlite"];
 }

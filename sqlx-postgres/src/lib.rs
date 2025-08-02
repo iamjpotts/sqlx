@@ -47,7 +47,7 @@ mod testing;
 pub(crate) use sqlx_core::driver_prelude::*;
 
 pub use advisory_lock::{PgAdvisoryLock, PgAdvisoryLockGuard, PgAdvisoryLockKey};
-pub use arguments::{PgArgumentBuffer, PgArguments};
+pub use arguments::{PgArgumentBuffer, PgArguments, PgArgumentsInner};
 pub use bind_iter::PgBindIterExt;
 pub use column::PgColumn;
 pub use connection::PgConnection;
@@ -82,4 +82,3 @@ impl_into_arguments_for_arguments!(PgArguments);
 impl_acquire!(Postgres, PgConnection);
 impl_column_index_for_row!(PgRow);
 impl_column_index_for_statement!(PgStatement);
-impl_encode_for_option!(Postgres);

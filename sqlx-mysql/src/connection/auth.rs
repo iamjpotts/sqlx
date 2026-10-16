@@ -42,6 +42,13 @@ impl AuthPlugin {
     ) -> Result<bool, Error> {
         match self {
             AuthPlugin::CachingSha2Password if packet[0] == 0x01 => {
+                if packet.len() < 2 {
+                    return Err(err_protocol!(
+                        "expected at least 2 bytes in caching_sha2_password authentication packet but got {}",
+                        packet.len()
+                    ));
+                }
+
                 match packet[1] {
                     // fast_auth_success — the server still sends a trailing
                     // OK_Packet, so yield back to the handshake loop and let

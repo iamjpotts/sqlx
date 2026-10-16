@@ -11,6 +11,13 @@ use crate::protocol::response::{EofPacket, ErrPacket, OkPacket, Status};
 use crate::protocol::{Capabilities, Packet};
 use crate::{MySqlConnectOptions, MySqlDatabaseError};
 
+/// The maximum total payload that we accept for a single (possibly reassembled)
+/// packet: 1 GiB, MySQL's own hard maximum for `max_allowed_packet`.
+///
+/// Without this cap, a hostile server could stream an unbounded number of
+/// 16 MiB packet parts and exhaust the client's memory.
+const MAX_PACKET_PAYLOAD_LEN: usize = 1024 * 1024 * 1024;
+
 pub struct MySqlStream<S = Box<dyn Socket>> {
     // Wrapping the socket in `Box` allows us to unsize in-place.
     pub(crate) socket: BufferedSocket<S>,
@@ -155,6 +162,14 @@ impl<S: Socket> MySqlStream<S> {
             while last_read == 0xFF_FF_FF {
                 let part = self.recv_packet_part().await?;
                 last_read = part.len();
+
+                if final_payload.len() + part.len() > MAX_PACKET_PAYLOAD_LEN {
+                    return Err(err_protocol!(
+                        "reassembled packet payload of {} bytes exceeds maximum packet payload of {MAX_PACKET_PAYLOAD_LEN} bytes",
+                        final_payload.len() + part.len()
+                    ));
+                }
+
                 final_payload.extend_from_slice(&part);
             }
             final_payload.into()
